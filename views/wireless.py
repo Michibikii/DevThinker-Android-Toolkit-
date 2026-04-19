@@ -231,9 +231,8 @@ class FrameWireless(ctk.CTkFrame):
 
     def setup_legacy_tab(self):
         instructions = (
-            "1. Conecta tu teléfono a la PC usando el cable USB.\n"
-            "2. En la notificación de Android, selecciona 'Transferencia de Archivos (MTP)'.\n"
-            "3. Activa 'Depuración USB' en Opciones de Desarrollador."
+            "1. Activa la 'Depuración USB' en las Opciones de Desarrollador.\n"
+            "2. Conecta tu teléfono a la PC usando el cable USB."
         )
         self._add_tab_header(self.tab_legacy, "🔌 Conexión por Cable USB", instructions)
         
@@ -245,62 +244,26 @@ class FrameWireless(ctk.CTkFrame):
         
         ctk.CTkLabel(f_center, text="🔌", font=("Segoe UI Emoji", 45), text_color="#F8FAFC").pack(pady=(0, 20))
 
-        self.btn_usb_connect = ctk.CTkButton(f_center, text="Iniciar Asistente USB", font=("Segoe UI", 14, "bold"), height=45, width=220, fg_color="#8B5CF6", hover_color="#7C3AED", command=self.open_usb_assistant)
+        self.btn_usb_connect = ctk.CTkButton(f_center, text="Buscar Dispositivo USB", font=("Segoe UI", 14, "bold"), height=45, width=220, fg_color="#8B5CF6", hover_color="#7C3AED", command=self.conectar_usb_directo)
         self.btn_usb_connect.pack()
-        ToolTip(self.btn_usb_connect, "Abre un asistente interactivo inteligente para verificar y configurar tu dispositivo por cable.")
+        ToolTip(self.btn_usb_connect, "Fuerza la detección del teléfono conectado por cable.")
 
-    def open_usb_assistant(self):
-        if hasattr(self, 'usb_win') and self.usb_win and self.usb_win.winfo_exists():
-            self.usb_win.focus()
-            return
+    def conectar_usb_directo(self):
+        self.btn_usb_connect.configure(text="⏳ Buscando...", state="disabled")
+        
+        def task():
+            run_adb(["kill-server"])
+            run_adb(["start-server"])
+            return run_adb(["devices"])
             
-        self.usb_win = ctk.CTkToplevel(self.app)
-        self.usb_win.title("Asistente de Conexión USB")
-        self.usb_win.configure(fg_color="#0B0F19")
-        utils.center_toplevel(self.usb_win, self.app, 520, 440)
-        self.usb_win.attributes("-topmost", True)
-        self.usb_win.transient(self.app)
-        
-        ctk.CTkLabel(self.usb_win, text="Asistente de Conexión USB", font=("Segoe UI", 18, "bold"), text_color="#F8FAFC").pack(pady=(20, 5))
-        
-        f_steps = ctk.CTkFrame(self.usb_win, fg_color="#181D2B", corner_radius=12, border_width=1, border_color="#252D40")
-        f_steps.pack(fill="x", padx=20, pady=10)
-        
-        steps = (
-            "1. Conecta tu teléfono a la PC usando el cable USB.\n"
-            "2. En la notificación de Android, selecciona:\n"
-            "   ▶ Transferencia de Archivos (MTP) o PTP.\n"
-            "3. En Opciones de Desarrollador, activa 'Depuración USB'.\n"
-            "4. Acepta el cuadro de 'Permitir depuración' en tu celular."
-        )
-        ctk.CTkLabel(f_steps, text=steps, font=("Segoe UI", 13), text_color="#E2E8F0", justify="left").pack(anchor="w", padx=15, pady=15)
-        
-        self.lbl_usb_status = ctk.CTkLabel(self.usb_win, text="⏳ Buscando dispositivo...", font=("Segoe UI", 15, "bold"), text_color="#38BDF8")
-        self.lbl_usb_status.pack(pady=(10, 5))
-        
-        self.lbl_usb_mode = ctk.CTkLabel(self.usb_win, text="Analizando conexión física...", font=("Segoe UI", 12), text_color="#94A3B8")
-        self.lbl_usb_mode.pack(pady=(0, 10))
-        
-        self.f_usb_actions = ctk.CTkFrame(self.usb_win, fg_color="transparent")
-        self.f_usb_actions.pack(fill="x", padx=20, pady=5)
-        
-        self.usb_monitoring = True
-        self.usb_win.protocol("WM_DELETE_WINDOW", self.close_usb_assistant)
-        
-        threading.Thread(target=self._usb_assistant_loop, daemon=True).start()
-
-    def _usb_assistant_loop(self):
-        while self.usb_monitoring:
-            if not self.usb_win.winfo_exists():
-                break
-                
-            out = run_adb(["devices"])
+        def on_done(out):
+            self._safe_after(0, lambda: self.btn_usb_connect.configure(text="Buscar Dispositivo USB", state="normal"))
+            
             if not out:
-                time.sleep(1)
-                continue
+                self.app.show_toast("Error crítico al ejecutar ADB", color="#EF4444")
+                return
                 
             lines = out.strip().split('\n')
-            found_id = None
             state = "missing"
             
             for line in lines:
@@ -313,61 +276,15 @@ class FrameWireless(ctk.CTkFrame):
                     break
                 elif "device" in line:
                     state = "connected"
-                    found_id = line.split()[0]
                     break
                     
-            if state == "missing":
-                self._safe_after(0, lambda: self.lbl_usb_status.configure(text="⏳ Conecta el cable USB...", text_color="#38BDF8"))
+            if state == "connected":
+                self.app.show_toast("¡Dispositivo USB detectado y listo!", color="#10B981")
             elif state == "unauthorized":
-                self._safe_after(0, lambda: [
-                    self.lbl_usb_status.configure(text="⚠️ Dispositivo Bloqueado", text_color="#F59E0B"),
-                    self.lbl_usb_mode.configure(text="Presiona 'Permitir' en la pantalla de tu celular.", text_color="#F8FAFC")
-                ])
+                utils.ShowInfo(self.app, "Autorización Pendiente", "El dispositivo está conectado pero bloqueado.\n\nPor favor, enciende la pantalla de tu celular y presiona 'Permitir depuración USB'.", True)
             elif state == "offline":
-                self._safe_after(0, lambda: [
-                    self.lbl_usb_status.configure(text="🔌 Dispositivo Desconectado", text_color="#EF4444"),
-                    self.lbl_usb_mode.configure(text="Reconecta el cable USB o reinicia la depuración.", text_color="#F8FAFC")
-                ])
-            elif state == "connected" and found_id:
-                mode_out = run_adb(["-s", found_id, "shell", "getprop", "sys.usb.state"])
-                mode_str = "Desconocido"
-                is_optimal = False
-                
-                if mode_out:
-                    mode_out = mode_out.lower()
-                    if "mtp" in mode_out:
-                        mode_str = "Transferencia de Archivos (MTP)"
-                        is_optimal = True
-                    elif "ptp" in mode_out or "midi" in mode_out:
-                        mode_str = "Fotos / MIDI (PTP)"
-                        is_optimal = True
-                    elif "charging" in mode_out or mode_out.strip() == "adb":
-                        mode_str = "Solo Carga (Puede ser inestable)"
-                        is_optimal = False
-                    else:
-                        mode_str = mode_out.strip()
-                
-                self.usb_monitoring = False
-                self._safe_after(0, lambda: self._show_usb_success(found_id, mode_str, is_optimal))
-                break
-                
-            time.sleep(1.5)
+                self.app.show_toast("Dispositivo offline. Desconecta y reconecta el cable.", color="#F59E0B")
+            else:
+                utils.ShowInfo(self.app, "No Detectado", "No se encontró ningún teléfono.\n\n1. Revisa el cable USB.\n2. Asegúrate de tener activada la 'Depuración USB' en tu celular.", True)
 
-    def _show_usb_success(self, dev_id, mode_str, is_optimal):
-        if not hasattr(self, 'usb_win') or not self.usb_win.winfo_exists(): return
-        
-        self.lbl_usb_status.configure(text="✅ ¡Dispositivo Conectado Exitosamente!", text_color="#10B981")
-        
-        mode_color = "#10B981" if is_optimal else "#F59E0B"
-        advise = "\n(Este modo físico es correcto)" if is_optimal else "\n(Sugerencia: Cambiar a Transferencia de Archivos MTP)"
-        self.lbl_usb_mode.configure(text=f"Modo USB detectado: {mode_str}{advise}", text_color=mode_color)
-        
-        for w in self.f_usb_actions.winfo_children(): w.destroy()
-        
-        btn_done = ctk.CTkButton(self.f_usb_actions, text="Finalizar Asistente", font=("Segoe UI", 13, "bold"), height=40, fg_color="#10B981", hover_color="#059669", command=self.close_usb_assistant)
-        btn_done.pack(fill="x", pady=10)
-
-    def close_usb_assistant(self):
-        self.usb_monitoring = False
-        if hasattr(self, 'usb_win') and self.usb_win.winfo_exists():
-            self.usb_win.destroy()
+        utils.run_async(task, on_done, self.app)

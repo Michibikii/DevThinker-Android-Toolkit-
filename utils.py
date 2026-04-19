@@ -1,6 +1,7 @@
 import shutil
 import os
 import subprocess
+import ssl
 import json
 import threading
 import platform
@@ -70,8 +71,10 @@ def check_adb_update():
         return False, None
     url, _ = get_adb_url_and_sys()
     try:
+        ctx = ssl._create_unverified_context()
         req = urllib.request.Request(url, method='HEAD')
-        with urllib.request.urlopen(req, timeout=5) as response:
+
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as response: 
             remote_ver = response.headers.get('ETag') or response.headers.get('Last-Modified')
             local_ver = ConfigManager.load_config().get("adb_version")
             return (remote_ver != local_ver), remote_ver
@@ -95,9 +98,9 @@ def download_and_install_adb(target_dir=None, progress_callback=None):
         else:
             os.system("killall adb >/dev/null 2>&1")
         time.sleep(1)
-
+        ctx = ssl._create_unverified_context()
         req = urllib.request.Request(url, headers={'User-Agent': 'DevThinker/1.0'})
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with urllib.request.urlopen(req, timeout=30, context=ctx) as response:
             total_size = int(response.headers.get('content-length', 0))
             remote_ver = response.headers.get('ETag') or response.headers.get('Last-Modified')
             
