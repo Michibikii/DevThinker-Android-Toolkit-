@@ -21,13 +21,7 @@ DevThinker es una herramienta integral diseñada para desarrolladores, técnicos
 Asegúrate de tener **Python 3.8 o superior** instalado en tu sistema.
 
 🛠️ Tecnologías Utilizadas
-Python 3
-CustomTkinter (Interfaz Gráfica)
-Pillow (Procesamiento de imágenes)
-ADB (Android Debug Bridge)
+Python 3, CustomTkinter (Interfaz Gráfica), Pillow (Procesamiento de imágenes), ADB (Android Debug Bridge)
 
 📝 Notas Adicionales
 Para utilizar las funciones inalámbricas de forma fluida, se recomienda pausar momentáneamente cualquier VPN o bloqueador de anuncios activo (como Blokada o AdGuard) en el dispositivo móvil durante la vinculación.
-
-Clona este repositorio en tu computadora:
-   git clone [https://github.com/Michibikii/DevThinker-Android-Toolkit-.git](https://github.com/Michibikii/DevThinker-Android-Toolkit-.git)
