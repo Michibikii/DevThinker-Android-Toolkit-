@@ -25,13 +25,15 @@ class FramePackages(ctk.CTkFrame):
         self.lbl_status = ctk.CTkLabel(c, text="", font=("Segoe UI", 12), text_color="#94A3B8")
         self.lbl_status.pack(side="left", padx=10)
         
-        self.entry_s = ctk.CTkEntry(c, placeholder_text="Buscar paquete...", width=200, height=40, font=("Segoe UI", 12), fg_color="#0B0F19", border_color="#252D40", text_color="#F8FAFC")
+        self.entry_s = ctk.CTkEntry(c, placeholder_text="Buscar aplicación...", width=200, height=40, font=("Segoe UI", 12), fg_color="#0B0F19", border_color="#252D40", text_color="#F8FAFC")
         self.entry_s.pack(side="right", padx=15, pady=15)
         self.entry_s.bind("<KeyRelease>", self.filter_list)
         
         self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.scroll.pack(fill="both", expand=True, pady=10)
+        
         self.items = []
+        self.row_widgets = [] # Optimización: Guardamos referencia para el buscador rápido
 
     @requires_device
     def install_apk(self):
@@ -55,22 +57,39 @@ class FramePackages(ctk.CTkFrame):
 
     def finish(self, pkgs): 
         self.items = pkgs
+        
         for w in self.scroll.winfo_children():
             w.destroy()
+            
+        self.row_widgets.clear()
+        
         for p in pkgs:
             self.add_row(p)
+            
         self.btn_ref.configure(state="normal")
         self.lbl_status.configure(text=f"Encontradas {len(pkgs)} apps")
 
+    def extract_app_name(self, pkg):
+        # Transforma "com.google.android.youtube" en "Youtube"
+        parts = pkg.split('.')
+        ignore = ['com', 'org', 'net', 'android', 'google', 'apps', 'mobile', 'app']
+        filtered = [p for p in parts if p.lower() not in ignore]
+        if filtered:
+            return filtered[-1].capitalize()
+        return parts[-1].capitalize()
+
     def add_row(self, pkg):
+        app_name = self.extract_app_name(pkg)
+        display_text = f"{app_name}  ({pkg})"
+        
         f = ctk.CTkFrame(self.scroll, fg_color="#181D2B", height=45, corner_radius=8, border_width=1, border_color="#252D40")
         f.pack(fill="x", pady=3, padx=5)
         
-        ctk.CTkLabel(f, text=pkg, font=("Consolas", 13), text_color="#E2E8F0").pack(side="left", padx=15, pady=8)
+        ctk.CTkLabel(f, text=display_text, font=("Consolas", 13), text_color="#E2E8F0").pack(side="left", padx=15, pady=8)
         
-        btn_clr = ctk.CTkButton(f, text="Borrar", width=70, height=32, font=("Segoe UI", 12, "bold"), fg_color="#F59E0B", hover_color="#D97706", command=lambda pkg_name=pkg: self.act(pkg_name, "borrar"))
+        btn_clr = ctk.CTkButton(f, text="Limpiar Datos", width=105, height=32, font=("Segoe UI", 12, "bold"), fg_color="#F59E0B", hover_color="#D97706", command=lambda pkg_name=pkg: self.act(pkg_name, "limpiar"))
         btn_clr.pack(side="right", padx=8, pady=6)
-        ToolTip(btn_clr, "Borra los datos de la app.")
+        ToolTip(btn_clr, "Borra caché y datos. Deja la app como recién instalada.")
         
         btn_un = ctk.CTkButton(f, text="Desinstalar", width=85, height=32, font=("Segoe UI", 12, "bold"), fg_color="#EF4444", hover_color="#DC2626", command=lambda pkg_name=pkg: self.act(pkg_name, "desinstalar"))
         btn_un.pack(side="right", padx=5, pady=6)
@@ -83,6 +102,18 @@ class FramePackages(ctk.CTkFrame):
         btn_launch = ctk.CTkButton(f, text="▶ Abrir", width=70, height=32, font=("Segoe UI", 12, "bold"), fg_color="#38BDF8", hover_color="#0284C7", command=lambda pkg_name=pkg: self.act(pkg_name, "abrir"))
         btn_launch.pack(side="right", padx=8, pady=6)
         ToolTip(btn_launch, "Lanza la aplicación en el dispositivo.")
+        
+        self.row_widgets.append({"frame": f, "pkg": pkg, "name": app_name})
+
+    def filter_list(self, e): 
+        q = self.entry_s.get().lower()
+        
+        for item in self.row_widgets:
+            item["frame"].pack_forget()
+            
+        for item in self.row_widgets:
+            if q in item["pkg"].lower() or q in item["name"].lower():
+                item["frame"].pack(fill="x", pady=3, padx=5)
 
     @requires_device
     def act(self, pkg, action):
@@ -104,11 +135,3 @@ class FramePackages(ctk.CTkFrame):
                     self.refresh()
                 
             run_async(lambda: self.app.adb_cmd(cmd), callback, self.app)
-
-    def filter_list(self, e): 
-        q = self.entry_s.get().lower()
-        for w in self.scroll.winfo_children():
-            w.destroy()
-        for p in self.items:
-            if q in p.lower():
-                self.add_row(p)

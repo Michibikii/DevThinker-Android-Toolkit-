@@ -98,7 +98,10 @@ class DevThinkerApp(ctk.CTk):
 
     def adb_cmd(self, command_list, timeout=15):
         if not self.current_device_id:
-            self.show_toast("No hay dispositivo conectado", color="#EF4444")
+            try:
+                self.show_toast("No hay dispositivo conectado", color="#EF4444")
+            except:
+                pass
             return None
         return run_adb(["-s", self.current_device_id] + command_list, timeout=timeout)
 
@@ -161,6 +164,9 @@ class DevThinkerApp(ctk.CTk):
             self.frames["tools"].refresh_adb_card_ui()
         elif name == "files" and self.current_device_id:
             self.frames["files"].load_files()
+        elif name == "packages" and self.current_device_id:
+            if not getattr(self.frames["packages"], "items", None):
+                self.frames["packages"].refresh()
 
     def disconnect_device(self):
         if self.current_device_id:
@@ -212,55 +218,71 @@ class DevThinkerApp(ctk.CTk):
             elif found_line:
                 try:
                     dev_id = found_line.split()[0]
-                    self.current_device_id = dev_id
                     
-                    props_raw = self.adb_cmd(["shell", "getprop"])
-                    brand, model, ver, api, cpu = "Desconocido", "Dispositivo", "?", "?", "?"
-                    market_name = ""
-                    
-                    if props_raw:
-                        props = dict(re.findall(r'\[(.*?)\]:\s*\[(.*?)\]', props_raw))
-                        brand = props.get('ro.product.brand', 'Desconocido').capitalize()
-                        model = props.get('ro.product.model', 'Dispositivo')
-                        ver   = props.get('ro.build.version.release', '?')
-                        api   = props.get('ro.build.version.sdk', '?')
-                        cpu   = props.get('ro.product.cpu.abi', '?')
+                    if dev_id != getattr(self, "cached_dev_id", None):
+                        self.current_device_id = dev_id
+                        self.cached_dev_id = dev_id
                         
-                        market_name = props.get('ro.product.marketname', '')
-                        if not market_name:
-                            market_name = props.get('ro.product.vendor.marketname', '')
+                        props_raw = self.adb_cmd(["shell", "getprop"])
+                        brand, model, ver, api, cpu = "Desconocido", "Dispositivo", "?", "?", "?"
+                        market_name = ""
+                        
+                        if props_raw:
+                            props = dict(re.findall(r'\[(.*?)\]:\s*\[(.*?)\]', props_raw))
+                            brand = props.get('ro.product.brand', 'Desconocido').capitalize()
+                            model = props.get('ro.product.model', 'Dispositivo')
+                            ver   = props.get('ro.build.version.release', '?')
+                            api   = props.get('ro.build.version.sdk', '?')
+                            cpu   = props.get('ro.product.cpu.abi', '?')
                             
-                    if not market_name:
-                        dev_name_out = self.adb_cmd(["shell", "settings", "get", "global", "device_name"])
-                        if dev_name_out and "null" not in dev_name_out and "error" not in dev_name_out.lower():
-                            market_name = dev_name_out.strip()
-                    
-                    full_name = f"📱 {brand} {model}" if brand != "Desconocido" else f"📱 {model}"
-                    
-                    if not market_name:
-                        market_name = model
+                            market_name = props.get('ro.product.marketname', '')
+                            if not market_name:
+                                market_name = props.get('ro.product.vendor.marketname', '')
+                                
+                        if not market_name:
+                            dev_name_out = self.adb_cmd(["shell", "settings", "get", "global", "device_name"])
+                            if dev_name_out and "null" not in dev_name_out and "error" not in dev_name_out.lower():
+                                market_name = dev_name_out.strip()
                         
-                    online_info = f"✅ Modelo: {market_name}"
+                        full_name = f"📱 {brand} {model}" if brand != "Desconocido" else f"📱 {model}"
+                        
+                        if not market_name:
+                            market_name = model
+                            
+                        self.cached_full_name = full_name
+                        self.cached_market_name = market_name
+                        self.cached_ver = ver
+                        self.cached_api = api
+                        self.cached_cpu = cpu
+                        self.bat_counter = 5 
+                    
+                    if getattr(self, "bat_counter", 5) >= 5:
+                        bat_raw = self.adb_cmd(["shell", "dumpsys", "battery"])
+                        level = "?"
+                        if bat_raw:
+                            for l in bat_raw.split('\n'):
+                                if "level:" in l:
+                                    level = l.split(":")[1].strip() + "%"
+                                    break
+                        self.cached_battery = level
+                        self.bat_counter = 0
+                    else:
+                        self.bat_counter += 1
+                        
+                    online_info = f"✅ Modelo: {self.cached_market_name}"
                     
                     if self.adb_update_available:
                         online_info += "\n🔔 ¡Actualización de ADB\nrecomendada en Utilidades!"
                     
-                    bat_raw = self.adb_cmd(["shell", "dumpsys", "battery"])
-                    level = "?"
-                    if bat_raw:
-                        for l in bat_raw.split('\n'):
-                            if "level:" in l:
-                                level = l.split(":")[1].strip() + "%"
-                                break
-                    
-                    sub1 = f"🤖 Android {ver}   |   🔋 {level}"
-                    sub2 = f"⚙️ API {api} • {cpu}\n{online_info}"
+                    sub1 = f"🤖 Android {self.cached_ver}   |   🔋 {self.cached_battery}"
+                    sub2 = f"⚙️ API {self.cached_api} • {self.cached_cpu}\n{online_info}"
 
-                    self.thread_safe_update(full_name, sub1, sub2, "#132E25", "#10B981", True)
+                    self.thread_safe_update(self.cached_full_name, sub1, sub2, "#132E25", "#10B981", True)
                 except:
                     pass
             else:
                 self.current_device_id = None
+                self.cached_dev_id = None
                 self.thread_safe_update("🚫 Sin Dispositivo", "Esperando conexión...", "", "#181D2B", "#F8FAFC", False)
             
             time.sleep(3)

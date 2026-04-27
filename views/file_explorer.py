@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import re
 import os
+import posixpath
 from tkinter import filedialog
 import utils
 from utils import ToolTip, requires_device, run_async
@@ -39,7 +40,11 @@ class FrameFileExplorer(ctk.CTkFrame):
 
     @requires_device
     def load_files(self):
-        self.app.show_toast("Cargando archivos...", color="#38BDF8")
+        for widget in self.scroll_files.winfo_children():
+            widget.destroy()
+
+        ctk.CTkLabel(self.scroll_files, text="🔄 Cargando directorio...", font=("Segoe UI", 14), text_color="#38BDF8").pack(pady=30)
+        
         path = self.entry_path.get()
         run_async(lambda: self.app.adb_cmd(["shell", "ls", "-lA", f'"{path}"']), self._update_ui_with_files, self.app)
 
@@ -48,16 +53,20 @@ class FrameFileExplorer(ctk.CTkFrame):
             widget.destroy()
 
         if not adb_output or "Permission denied" in adb_output:
-            ctk.CTkLabel(self.scroll_files, text="Carpeta vacía o sin permisos (requiere root).", font=("Segoe UI", 13), text_color="#64748B").pack(pady=20)
+            ctk.CTkLabel(self.scroll_files, text="Carpeta sin permisos (requiere root) o inaccesible.", font=("Segoe UI", 13), text_color="#EF4444").pack(pady=20)
+            return
+
+        lines = adb_output.split('\n')
+        valid_lines = [l.strip() for l in lines if l.strip() and not l.startswith("total")]
+        
+        # Validación de carpeta vacía
+        if not valid_lines:
+            ctk.CTkLabel(self.scroll_files, text="📁 Carpeta vacía", font=("Segoe UI", 14), text_color="#94A3B8").pack(pady=30)
             return
 
         pattern = re.compile(r'^([dl\-])[^\s]+\s+.*?\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}|\w{3}\s+\d{2}\s+(?:\d{4}|\d{2}:\d{2}))\s+(.*)$')
 
-        for line in adb_output.split('\n'):
-            line = line.strip()
-            if not line or line.startswith("total"):
-                continue
-            
+        for line in valid_lines:
             match = pattern.match(line)
             if match:
                 f_type, f_date, f_name = match.group(1), match.group(2), match.group(3)
@@ -91,7 +100,7 @@ class FrameFileExplorer(ctk.CTkFrame):
         ToolTip(btn_del, "Eliminar permanentemente del dispositivo.")
 
         if f_type == '-':
-            btn_ext = ctk.CTkButton(row, text="📥 Extraer", width=80, height=32, font=("Segoe UI", 12, "bold"), fg_color="#38BDF8", hover_color="#0284C7", command=action)
+            btn_ext = ctk.CTkButton(row, text="📥 Descargar", width=90, height=32, font=("Segoe UI", 12, "bold"), fg_color="#38BDF8", hover_color="#0284C7", command=action)
             btn_ext.pack(side="right", padx=5)
             ToolTip(btn_ext, "Descargar este archivo a tu computadora.")
 
@@ -147,7 +156,8 @@ class FrameFileExplorer(ctk.CTkFrame):
     def go_up(self):
         current = self.entry_path.get()
         if current not in ["/", "/sdcard/"]:
-            new_path = "/" + "/".join([p for p in current.split("/") if p][:-1]) + "/"
+            # Optimización: Se utiliza posixpath para asegurar una navegación limpia en Android
+            new_path = posixpath.dirname(current.rstrip('/')) + "/"
             if new_path == "//":
                 new_path = "/"
             self.entry_path.delete(0, "end")

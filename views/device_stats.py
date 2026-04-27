@@ -21,6 +21,10 @@ class FrameDeviceStats(ctk.CTkFrame):
         self.btn_toggle.pack(side="left", padx=15, pady=15)
         ToolTip(self.btn_toggle, "Inicia o detiene la lectura en tiempo real del hardware del teléfono.")
 
+        self.btn_clear = ctk.CTkButton(c, text="🧹 Limpiar", width=110, height=40, font=("Segoe UI", 13, "bold"), fg_color="#475569", hover_color="#334155", command=self.clear_monitor)
+        self.btn_clear.pack(side="left", padx=(0, 15), pady=15)
+        ToolTip(self.btn_clear, "Detiene el monitor y limpia los gráficos y registros de la pantalla.")
+
         self.grid_cards = ctk.CTkFrame(self, fg_color="transparent")
         self.grid_cards.pack(fill="x", pady=15)
         self.grid_cards.grid_columnconfigure(0, weight=1)
@@ -50,8 +54,23 @@ class FrameDeviceStats(ctk.CTkFrame):
         self.txt_cpu.insert("1.0", "Haz clic en 'Iniciar Monitor' para ver los procesos...")
         self.txt_cpu.configure(state="disabled")
 
+    def clear_monitor(self):
+        if self.is_monitoring:
+            self.toggle_monitor()
+        
+        self.bar_ram.set(0)
+        self.lbl_ram_text.configure(text="-- / -- MB (0%)")
+        
+        self.bar_sto.set(0)
+        self.lbl_sto_text.configure(text="-- / -- GB (0%)")
+        
+        self.txt_cpu.configure(state="normal")
+        self.txt_cpu.delete("1.0", "end")
+        self.txt_cpu.insert("end", "Haz clic en 'Iniciar Monitor' para ver los procesos...")
+        self.txt_cpu.configure(state="disabled")
+
     def toggle_monitor(self):
-        if not self.app.current_device_id:
+        if not self.app.current_device_id and not self.is_monitoring:
             self.app.show_toast("No hay dispositivo conectado", color="#EF4444")
             return
 
@@ -72,7 +91,10 @@ class FrameDeviceStats(ctk.CTkFrame):
     def _monitor_loop(self):
         while self.is_monitoring:
             if not self.app.current_device_id:
-                time.sleep(3)
+                for _ in range(30):
+                    if not self.is_monitoring:
+                        break
+                    time.sleep(0.1)
                 continue
 
             try:
@@ -85,6 +107,8 @@ class FrameDeviceStats(ctk.CTkFrame):
                         total_ram = int(m_total.group(1)) / 1024
                         avail_ram = int(m_avail.group(1)) / 1024
                 
+                if not self.is_monitoring: break
+
                 sto_out = self.app.adb_cmd(["shell", "df", "/data"])
                 sto_pct, sto_used, sto_total = 0, "0", "0"
                 if sto_out:
@@ -92,28 +116,34 @@ class FrameDeviceStats(ctk.CTkFrame):
                     if len(lines) > 1:
                         parts = lines[1].split()
                         if len(parts) >= 5:
-                            sto_total = parts[1]
-                            sto_used = parts[2]
+                            sto_total_raw = parts[1]
+                            sto_used_raw = parts[2]
                             pct_str = parts[4].replace('%', '')
                             if pct_str.isdigit():
                                 sto_pct = int(pct_str)
-                                sto_total = f"{int(sto_total) / 1048576:.1f} GB" 
-                                sto_used = f"{int(sto_used) / 1048576:.1f} GB"
+                                sto_total = f"{int(sto_total_raw) / 1048576:.1f} GB" 
+                                sto_used = f"{int(sto_used_raw) / 1048576:.1f} GB"
+
+                if not self.is_monitoring: break
 
                 cpu_out = self.app.adb_cmd(["shell", "top", "-n", "1", "-b", "-m", "15"])
                 cpu_text = "No se pudo obtener información de la CPU."
                 if cpu_out:
                     cpu_text = cpu_out
 
-                try:
-                    self.app.after(0, self._update_ui, total_ram, avail_ram, sto_pct, sto_used, sto_total, cpu_text)
-                except:
-                    pass
+                if self.is_monitoring:
+                    try:
+                        self.app.after(0, self._update_ui, total_ram, avail_ram, sto_pct, sto_used, sto_total, cpu_text)
+                    except:
+                        pass
                 
             except:
                 pass
             
-            time.sleep(3)
+            for _ in range(30):
+                if not self.is_monitoring:
+                    break
+                time.sleep(0.1)
 
         try:
             self.app.after(0, lambda: self.btn_toggle.configure(text="▶ Iniciar Monitor", fg_color="#10B981", hover_color="#059669"))

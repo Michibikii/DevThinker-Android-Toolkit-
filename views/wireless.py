@@ -99,7 +99,7 @@ class FrameWireless(ctk.CTkFrame):
             for url in urls:
                 try:
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, context=ctx, timeout=6) as response:
+                    with urllib.request.urlopen(req, context=ctx, timeout=4) as response:
                         img_data = response.read()
                         if img_data:
                             break
@@ -206,7 +206,13 @@ class FrameWireless(ctk.CTkFrame):
             utils.run_async(lambda: run_adb(['connect', pair_addr]), lambda res: self._post_connect_legacy(res), self.app)
 
     def _post_connect_legacy(self, res):
-        self.app.show_toast(f"Intento: {res}")
+        if res and "connected" in res.lower() and "fail" not in res.lower():
+            self.app.show_toast("¡Conectado exitosamente!", color="#10B981")
+        elif res and ("fail" in res.lower() or "cannot connect" in res.lower() or "error" in res.lower()):
+            self.app.show_toast("Error al conectar", color="#EF4444")
+        else:
+            self.app.show_toast("Intento finalizado", color="#F59E0B")
+            
         self._safe_after(0, lambda: self.btn_manual_connect.configure(text="Vincular / Conectar", state="normal"))
 
     def _manual_connect_thread(self, pair_addr, pair_code):
@@ -252,6 +258,10 @@ class FrameWireless(ctk.CTkFrame):
         self.btn_usb_connect.configure(text="⏳ Buscando...", state="disabled")
         
         def task():
+            out = run_adb(["devices"])
+            if out and out.count('\n') > 1:
+                return out
+                
             run_adb(["kill-server"])
             run_adb(["start-server"])
             return run_adb(["devices"])
